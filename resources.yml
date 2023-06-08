@@ -1,0 +1,632 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  network
+
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  ENV:
+    Description: Required. Environment dev/test/prod
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
+
+Mappings:
+  dev:
+    values:
+      PrivateHostedZoneId: Z02501673SEI6MW1BO8WE
+  prod:
+    values:
+      PrivateHostedZoneId: Z0195174CUHQRHMURL9O
+
+Conditions:
+  IsDev: !Equals
+      - !Ref ENV
+      - dev
+  IsNotDev: !Not
+      - Condition: IsDev
+  IsProd: !Equals
+      - !Ref ENV
+      - prod
+  IsNotProd: !Not
+      - Condition: IsDev
+
+Resources:
+
+  MainVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 172.30.0.0/16
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      EnableDnsHostnames: true
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  InternetGatewayMainVpcAttchment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref MainVpc
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MainVpc
+      Tags:
+        - Key: Name
+          Value: private-route
+
+  PrvateRouteTableSubnetAZa:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetAZa
+
+  PrivateRouteTableSubnetAZb:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetAZb
+
+  PrivateRouteTableSubnetAZc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetAZc
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MainVpc
+      Tags:
+        - Key: Name
+          Value: public-route
+
+  InternetGatewayRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayMainVpcAttchment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  RouteTablePublicSubnetAZa:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetAZa
+
+  RouteTablePublicSubnetAZb:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetAZb
+
+  RouteTablePublicSubnetAZc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetAZc
+
+  NetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref MainVpc
+
+  NetworkAclInboundAllowAllRule: #TODO muito permisivo
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId: !Ref NetworkAcl
+      Egress: false
+      Protocol: -1
+      RuleAction: allow
+      RuleNumber: 100
+
+  NetworkAclOutboundAllowAllRule: #TODO muito permisivo
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId: !Ref NetworkAcl
+      Egress: true
+      Protocol: -1
+      RuleAction: allow
+      RuleNumber: 100
+
+  NetworkAclSubnetAZa:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      SubnetId: !Ref PrivateSubnetAZa
+
+  NetworkAclSubnetAZb:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      SubnetId: !Ref PrivateSubnetAZb
+
+  NetworkAclSubnetAZc:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      SubnetId: !Ref PrivateSubnetAZc
+
+  NetworkAclPublicSubnetAZa:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      SubnetId: !Ref PublicSubnetAZa
+
+  NetworkAclPublicSubnetAZb:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      SubnetId: !Ref PublicSubnetAZb
+
+  NetworkAclPublicSubnetAZc: #TODO não parece boa ideia ter a mesma NetworkAcl para todas as subnets
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      SubnetId: !Ref PublicSubnetAZc
+
+  PrivateSubnetAZa:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVpc
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: 172.30.48.0/20
+      Tags: 
+        - Key: Name
+          Value: private-a
+      
+  PrivateSubnetAZb:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVpc
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: 172.30.64.0/20
+      Tags: 
+        - Key: Name
+          Value: private-b
+
+  PrivateSubnetAZc:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVpc
+      AvailabilityZone:
+        Fn::Select:
+          - 2
+          - Fn::GetAZs: ""
+      CidrBlock: 172.30.80.0/20
+      Tags: 
+        - Key: Name
+          Value: private-c
+
+  PublicSubnetAZa:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVpc
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: 172.30.0.0/20
+      Tags: 
+        - Key: Name
+          Value: public-a
+      
+  PublicSubnetAZb:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVpc
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: 172.30.16.0/20
+      Tags: 
+        - Key: Name
+          Value: public-b
+
+  PublicSubnetAZc:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVpc
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 2
+          - Fn::GetAZs: ""
+      CidrBlock: 172.30.32.0/20
+      Tags: 
+        - Key: Name
+          Value: public-c
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  S3GatewayEndPoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref MainVpc
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+
+  DynamoGatewayEndPoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref MainVpc
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+  
+  # ApiGatewayPrivateEndpoint:
+  #   Type: AWS::EC2::VPCEndpoint
+  #   Properties:
+  #     VpcId: !Ref MainVpc
+  #     VpcEndpointType: Interface
+  #     ServiceName: com.amazonaws.sa-east-1.execute-api
+  #     PrivateDnsEnabled: true
+  #     SubnetIds:
+  #       - !Ref PrivateSubnetCoreAZa
+  #     SecurityGroupIds:
+  #       - !Ref CoreSecurityGroup
+
+  # LambdaSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: Techer Security Group
+  #     SecurityGroupEgress:
+  #       - IpProtocol: -1
+  #         FromPort: -1
+  #         ToPort: -1
+  #         CidrIp: 0.0.0.0/0
+  #     SecurityGroupIngress:
+  #       - IpProtocol: -1
+  #         FromPort: -1
+  #         ToPort: -1
+  #         CidrIp: !GetAtt MainVpc.CidrBlock
+  #       - IpProtocol: -1
+  #         FromPort: -1
+  #         ToPort: -1
+  #         CidrIp: 172.31.0.0/16
+  #     VpcId: !Ref MainVpc
+
+  # CoreSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: Core Security Group
+  #     SecurityGroupEgress:
+  #       - IpProtocol: -1
+  #         FromPort: -1
+  #         ToPort: -1
+  #         CidrIp: 0.0.0.0/0
+  #     SecurityGroupIngress:
+  #       - IpProtocol: -1
+  #         FromPort: -1
+  #         ToPort: -1
+  #         CidrIp: !GetAtt MainVpc.CidrBlock
+  #     VpcId: !Ref MainVpc
+
+  # SipProxySecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: Sip proxy security group
+  #     SecurityGroupEgress:
+  #       - IpProtocol: -1
+  #         FromPort: -1
+  #         ToPort: -1
+  #         CidrIp: 0.0.0.0/0
+  #     SecurityGroupIngress: !If
+  #         - IsProd
+  #         - - IpProtocol: udp
+  #             FromPort: 5060
+  #             ToPort: 5061
+  #             CidrIp: 0.0.0.0/0
+  #           - IpProtocol: tcp
+  #             FromPort: 5060
+  #             ToPort: 5061
+  #             CidrIp: 0.0.0.0/0
+  #           - IpProtocol: udp
+  #             FromPort: 30000
+  #             ToPort: 40000
+  #             CidrIp: 0.0.0.0/0
+  #           - IpProtocol: tcp
+  #             FromPort: 4443
+  #             ToPort: 4443
+  #             CidrIp: 0.0.0.0/0
+  #           - IpProtocol: -1
+  #             FromPort: -1
+  #             ToPort: -1
+  #             CidrIp: !GetAtt MainVpc.CidrBlock
+  #         - - IpProtocol: -1
+  #             FromPort: -1
+  #             ToPort: -1
+  #             CidrIp: !GetAtt MainVpc.CidrBlock
+  #     VpcId: !Ref MainVpc
+
+  # MainLoadBalancer:
+  #   Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+  #   Properties:
+  #     Type: application
+  #     Name: main
+  #     Scheme: internal
+  #     IpAddressType: ipv4
+  #     SecurityGroups:
+  #       - !Ref CoreSecurityGroup
+  #       - !Ref TecherSecurityGroup #TODO
+  #     Subnets:
+  #       - !Ref PrivateSubnetCoreAZa
+  #       - !Ref PrivateSubnetCoreAZb
+  #       - !Ref PrivateSubnetCoreAZc
+
+  # PrivateRouteRecord:
+  #   Type: AWS::Route53::RecordSet
+  #   Properties:
+  #     Type: A
+  #     HostedZoneId: !FindInMap [ !Ref ENV, values, PrivateHostedZoneId ]
+  #     Name: !Sub
+  #       - 'balancer.${Env}.ringer.app.br'
+  #       - Env: !Ref ENV
+  #     AliasTarget:
+  #       DNSName: !GetAtt MainLoadBalancer.DNSName
+  #       EvaluateTargetHealth: false
+  #       HostedZoneId: !GetAtt MainLoadBalancer.CanonicalHostedZoneID
+  
+  ##################### NAT GATEWAY ########################
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Condition: "IsNotDev"
+    Properties:
+      AllocationId: !GetAtt ElasticIp.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref PublicSubnetAZc
+
+  NATGatewayPrivateRoute: #DEV
+    Type: AWS::EC2::Route
+    Condition: "IsNotDev"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+
+  ##########################################################
+
+  #################### NAT INSTANCE ########################
+  NATLogs:
+    Type: AWS::Logs::LogGroup
+    Condition: "IsDev"
+    Properties: 
+      RetentionInDays: 1
+
+  NATRole:
+    Type: AWS::IAM::Role
+    Condition: "IsDev"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+               - ec2.amazonaws.com
+            Action: 
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: ec2
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: nose #TODO
+                Effect: Allow
+                Action:
+                  - 'ec2:AssociateAddress'
+                  - 'ec2:ModifyInstanceAttribute'
+                  - 'ec2:CreateRoute'
+                  - 'ec2:ReplaceRoute'
+                Resource: '*'
+        - PolicyName: logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: nose2 #TODO
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Resource: !GetAtt NATLogs.Arn
+
+  NATInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Condition: "IsDev"
+    Properties:
+      Roles:
+        - !Ref NATRole
+
+  NATSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: "IsDev"
+    Properties:
+      GroupDescription: !Ref AWS::StackName
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !GetAtt MainVpc.CidrBlock
+      VpcId: !Ref MainVpc
+
+  NATInstanceTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Condition: "IsDev"
+    Metadata:
+      'AWS::CloudFormation::Init':
+        # configSets:
+        #   default: [config]
+        config:
+          files:
+            '/etc/cfn/cfn-hup.conf':
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: '000400'
+              owner: root
+              group: root
+            '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.NATInstanceTemplate.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=NATInstanceTemplate
+                runas=root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - '/etc/cfn/cfn-hup.conf'
+                  - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
+    Properties:
+      LaunchTemplateData:
+        # KeyName: !ImportValue EC2KeyPairName
+        BlockDeviceMappings:
+          - DeviceName: '/dev/xvda'
+            Ebs:
+              Encrypted: true
+              VolumeType: gp3
+        IamInstanceProfile: 
+          Name: !Ref NATInstanceProfile
+        ImageId: ami-051d9f62ce01be14a #TODO
+        InstanceType: t2.nano #TODO
+        MetadataOptions:
+          HttpTokens: required
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            Groups:
+              - !Ref NATSecurityGroup
+        UserData:
+          'Fn::Base64': !Sub
+          - |
+            #!/bin/bash -ex
+            trap '/opt/aws/bin/cfn-signal -e 1 --region ${Region} --stack ${StackName} --resource NATAutoScalingGroup' ERR
+            TOKEN=$(curl --silent --max-time 60 -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 30")
+            INSTANCEID=$(curl --silent --max-time 60 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+            aws --region ${Region} ec2 associate-address --instance-id $INSTANCEID --allocation-id ${EIPAllocationId}
+            aws --region ${Region} ec2 modify-instance-attribute --instance-id $INSTANCEID --source-dest-check "{\"Value\": false}"
+            aws --region ${Region} ec2 replace-route --route-table-id ${PrivateRouteTable} --destination-cidr-block "0.0.0.0/0" --instance-id $INSTANCEID || aws --region ${Region} ec2 create-route --route-table-id ${PrivateRouteTable} --destination-cidr-block "0.0.0.0/0" --instance-id $INSTANCEID
+            /opt/aws/bin/cfn-init -v --stack ${StackName} --resource NATInstanceTemplate --region ${Region}
+            /opt/aws/bin/cfn-signal -e 0 --region ${Region} --stack ${StackName} --resource NATAutoScalingGroup
+          - PrivateRouteTable: !Ref PrivateRouteTable
+            Region: !Ref AWS::Region
+            StackName: !Ref AWS::StackName
+            EIPAllocationId: !GetAtt ElasticIp.AllocationId
+
+  NATAutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Condition: "IsDev"
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref NATInstanceTemplate
+        Version: !GetAtt 'NATInstanceTemplate.LatestVersionNumber'
+      MaxSize: '1'
+      MinSize: '1'
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - 'NAT instance ${CidrBlock}'
+            - CidrBlock: !Ref MainVpc
+          PropagateAtLaunch: true
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetAZc
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT10M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        PauseTime: PT10M
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduleActions
+        WaitOnResourceSignals: true
+
+  #########################################################
+
+Outputs:
+  VPC:
+    Description: ID of the VPC
+    Value: !Ref MainVpc
+    Export:
+      Name: !Sub "${AWS::StackName}-MainVPC"
+  PublicSubnetAZa:
+    Description: ID Public Subnet AZa
+    Value: !Ref PublicSubnetAZa
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetAZa"
+  PublicSubnetAZb:
+    Description: ID Public Subnet AZb
+    Value: !Ref PublicSubnetAZb
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetAZb"
+  PublicSubnetAZc:
+    Description: ID Public Subnet AZc
+    Value: !Ref PublicSubnetAZc
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetAZc"
+  PrivateSubnetAZa:
+    Description: ID Core Subnet AZa
+    Value: !Ref PrivateSubnetAZa
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetAZa"
+  PrivateSubnetAZb:
+    Description: ID Core Subnet AZb
+    Value: !Ref PrivateSubnetAZb
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetAZb"
+  PrivateSubnetAZc:
+    Description: ID Core Subnet AZc
+    Value: !Ref PrivateSubnetAZc
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetAZc"
+  # ApiGatewayPrivateEndpoint:
+  #   Description: ApiGateway private endpoint
+  #   Value: !Ref ApiGatewayPrivateEndpoint
+  #   Export:
+  #     Name: !Sub "${AWS::StackName}-ApiGatewayPrivateEndpoint"
+  # MainLoadBalancer:
+  #   Description: Main load balancer Ref
+  #   Value: !Ref MainLoadBalancer
+  #   Export:
+  #     Name: !Sub "${AWS::StackName}-MainLoadBalancer"
